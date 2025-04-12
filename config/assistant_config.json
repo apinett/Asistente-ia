@@ -1,0 +1,11 @@
+{
+    "voice_enabled": true,
+    "language": "es-ES",
+    "learning_rate": 0.1,
+    "max_history": 1000,
+    "tasks": {
+        "email": true,
+        "whatsapp": true,
+        "tms": true
+    }
+}

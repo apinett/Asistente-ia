@@ -1,30 +1,28 @@
 import pyttsx3
 import keyboard
 import time
-import json
-import os
 from typing import Dict, Any
-from ..tasks.email_manager import EmailManager
-from ..tasks.whatsapp_manager import WhatsAppManager
-from ..tasks.tms_manager import TMSManager
-from ..learning.adaptive_learning import AdaptiveLearning
-from ..utils.logger import get_logger
-from ..utils.auth_manager import AuthManager
+from src.utils.auth_manager import AuthManager
+from src.tasks.email_manager import EmailManager
+from src.tasks.whatsapp_manager import WhatsAppManager
+from src.tasks.tms_manager import TMSManager
+from src.utils.logger import Logger
+from src.learning.action_learner import ActionLearner
 
 
 class Assistant:
-    def __init__(self):
-        self.logger = get_logger(__name__)
+    def __init__(self, config: Dict[str, Any]):
+        self.logger = Logger()
+        self.config = config
         self.auth_manager = AuthManager()
         self.email_manager = None
         self.whatsapp_manager = None
         self.tms_manager = None
         self.engine = pyttsx3.init()
         self.setup_voice()
-        self.learning_system = AdaptiveLearning()
-
-        # Cargar configuración
-        self.config = self._load_config()
+        self.learning_system = (
+            ActionLearner() if config["learning"]["enable_learning"] else None
+        )
 
     def setup_voice(self):
         """Configurar la voz del asistente."""
@@ -36,60 +34,37 @@ class Assistant:
                 break
         self.engine.setProperty("rate", 150)  # Velocidad de habla
 
-    def _load_config(self) -> Dict[str, Any]:
-        """Cargar configuración del asistente."""
-        config_path = os.path.join("config", "assistant_config.json")
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            self.logger.warning(
-                "Archivo de configuración no encontrado. Usando configuración por defecto."
-            )
-            return self._create_default_config()
-
-    def _create_default_config(self) -> Dict[str, Any]:
-        """Crear configuración por defecto."""
-        default_config = {
-            "voice_enabled": True,
-            "language": "es-ES",
-            "learning_rate": 0.1,
-            "max_history": 1000,
-            "tasks": {"email": True, "whatsapp": True, "tms": True},
-        }
-        os.makedirs("config", exist_ok=True)
-        with open(
-            os.path.join("config", "assistant_config.json"), "w", encoding="utf-8"
-        ) as f:
-            json.dump(default_config, f, indent=4)
-        return default_config
-
     def speak(self, text):
         """Reproducir texto como voz."""
         self.logger.log(f"Asistente: {text}")
-        if self.config["voice_enabled"]:
-            self.engine.say(text)
-            self.engine.runAndWait()
-        print(f"Asistente: {text}")
+        self.engine.say(text)
+        self.engine.runAndWait()
 
     def initialize_services(self):
-        """Inicializar los servicios con las credenciales."""
+        """Inicializar los servicios con la configuración."""
         try:
-            credentials = self.auth_manager.load_credentials()
-
-            if credentials.get("email"):
+            # Configurar email
+            if self.config["email"]:
                 self.email_manager = EmailManager(
-                    credentials["email"]["username"], credentials["email"]["password"]
+                    self.config["email"]["email"],
+                    self.config["email"]["password"],
+                    self.config["email"]["server"],
+                    self.config["email"]["port"],
                 )
 
-            if credentials.get("whatsapp"):
+            # Configurar WhatsApp
+            if self.config["whatsapp"]:
                 self.whatsapp_manager = WhatsAppManager(
-                    credentials["whatsapp"]["phone"]
+                    self.config["whatsapp"]["phone"], self.config["whatsapp"]["api_key"]
                 )
 
-            if credentials.get("tms"):
+            # Configurar TMS
+            if self.config["tms"]:
                 self.tms_manager = TMSManager(
-                    credentials["tms"]["username"], credentials["tms"]["password"]
+                    self.config["tms"]["url"],
+                    self.config["tms"]["username"],
+                    self.config["tms"]["password"],
+                    self.config["tms"]["api_key"],
                 )
 
             return True
@@ -129,7 +104,11 @@ class Assistant:
                 self.speak("No se han configurado las credenciales del TMS")
 
         elif "actualizar" in command and "credenciales" in command:
-            self.auth_manager.update_credentials()
+            from src.utils.initial_setup import InitialSetup
+
+            setup = InitialSetup()
+            setup.run_setup()
+            self.config = setup.get_config()
             self.initialize_services()
             self.speak("Credenciales actualizadas correctamente")
 
@@ -161,8 +140,8 @@ class Assistant:
                     self.handle_command(command)
                     time.sleep(1)  # Evitar múltiples activaciones
 
-                # Aprender de la interacción
-                if command:
+                # Aprender de la interacción si está activado
+                if self.learning_system and command:
                     self.learning_system.learn_from_interaction(command)
 
             except KeyboardInterrupt:
