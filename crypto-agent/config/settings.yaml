@@ -1,0 +1,55 @@
+# Configuración del agente. Los secretos (API keys, tokens) van en variables de entorno, nunca acá.
+
+exchange:
+  spot: binance          # precio "real" + flujo agresor spot
+  derivatives: binanceusdm  # perpetuos USDT-M: funding, open interest, ratios long/short
+  quote: USDT
+
+universe:
+  top_n: 40              # activos con más volumen en perpetuos (con par spot equivalente)
+  always_include: [BTC/USDT, ETH/USDT, SOL/USDT]
+  exclude_bases: [USDC, FDUSD, TUSD, DAI, USDE, USDP, BUSD, EUR, PAXG, WBTC, BFUSD, USD1]
+  min_quote_volume_usd: 20000000
+
+timeframes:
+  # peso de cada temporalidad en el score final
+  1d: 0.35
+  4h: 0.35
+  1h: 0.20
+  15m: 0.10
+primary_timeframe: 4h    # temporalidad sobre la que se arma el plan (entrada / stop / objetivos)
+candles_limit: 400
+
+positioning:
+  enabled: true
+  period: 1h             # resolución de OI / ratios (Binance guarda 30 días)
+  lookback_bars: 24      # ventana de análisis del flujo
+  leverage_tiers: {10: 0.35, 25: 0.35, 50: 0.20, 100: 0.10}
+
+scoring:
+  # pesos base por componente (se ajustan por régimen y por desempeño medido)
+  weights:
+    trend: 0.22
+    momentum: 0.20
+    volume: 0.10
+    patterns: 0.08
+    structure: 0.15
+    positioning: 0.17
+    relative_strength: 0.08
+  strong_threshold: 55
+  signal_threshold: 25
+  adaptive_weights: true   # ajusta pesos según el IC medido en señales pasadas (mín. 50 evaluadas)
+
+alerts:
+  min_abs_score: 55        # sólo alerta señales fuertes
+  cooldown_hours: 12       # no repetir la misma señal del mismo activo
+  max_per_scan: 8
+
+schedule:
+  fast_scan_minutes: 15    # escaneo rápido (sólo 15m/1h, top 15)
+  full_scan_minutes: 60    # escaneo completo multi-timeframe + derivados
+  daily_report_hour: 9     # hora local (TZ) del informe diario
+  evaluate_minutes: 60     # verificación de resultados de señales pasadas
+  backup_hour: 3
+
+concurrency: 6             # requests simultáneos al exchange (ccxt respeta el rate limit)

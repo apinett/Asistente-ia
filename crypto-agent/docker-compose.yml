@@ -1,0 +1,37 @@
+# Despliegue en Coolify (Build Pack: Docker Compose, Base Directory: /crypto-agent)
+# o manual en el VPS:  docker compose up -d --build
+services:
+  crypto-agent:
+    build: .
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-5-5}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      API_TOKEN: ${API_TOKEN:?definí API_TOKEN}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/storage/cryptoagent.db}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - agent-storage:/app/storage
+      # Para editar la configuración sin reconstruir la imagen, descomentá:
+      # - ./config/settings.yaml:/app/config/settings.yaml:ro
+    # En Coolify asigná el dominio desde la UI (puerto 8000); para uso local descomentá "ports".
+    expose:
+      - "8000"
+    # ports:
+    #   - "127.0.0.1:8080:8000"   # no uses 8000 en el host: es el panel de Coolify
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"     # deja ~0.5 vCPU para Coolify, Traefik y el sistema
+          memory: 2g      # uso típico 400-700 MB
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  agent-storage:

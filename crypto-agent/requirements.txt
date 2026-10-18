@@ -1,0 +1,20 @@
+# Datos de mercado: API unificada para +100 exchanges (ccxt/ccxt, ~44k ⭐, MIT)
+ccxt>=4.5,<5
+# Indicadores + 61 patrones de velas en C (TA-Lib/ta-lib-python, ~12k ⭐). Desde 0.6 trae wheels con la lib C incluida.
+TA-Lib>=0.6.4,<1
+numpy>=2.0
+pandas>=2.2
+# Detección de régimen de mercado (hmmlearn/hmmlearn, ~3.4k ⭐)
+hmmlearn>=0.3.3
+scikit-learn>=1.5
+# Planificador de tareas (agronholm/apscheduler, ~7.6k ⭐). La rama 4.x es una reescritura: fijamos 3.x estable.
+APScheduler>=3.11,<4
+httpx>=0.28
+pydantic>=2.7
+pydantic-settings>=2.6
+PyYAML>=6.0
+SQLAlchemy>=2.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+# Narrativa del informe diario con Claude (opcional: sin API key se usa un informe por plantilla)
+anthropic>=1.0

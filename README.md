@@ -2,6 +2,8 @@
 
 Un asistente de inteligencia artificial local que aprende de tus acciones y te ayuda con tareas repetitivas.
 
+> 📈 **Nuevo:** agente de análisis continuo del mercado cripto para VPS en [`crypto-agent/`](crypto-agent/README.md).
+
 ## Características
 
 - Interfaz gráfica semi-transparente
