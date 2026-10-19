@@ -21,8 +21,12 @@ class AuthManager:
             else:
                 self.key = Fernet.generate_key()
                 os.makedirs('config', exist_ok=True)
-                with open(self.key_file, 'wb') as f:
+                # Crear el archivo con permisos 0600 (solo el propietario) en sistemas POSIX.
+                # En Windows el modo se ignora salvo el flag de solo lectura.
+                fd = os.open(self.key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'wb') as f:
                     f.write(self.key)
+                self.logger.info("Nueva clave de encriptación generada")
         except Exception as e:
             self.logger.error(f"Error al manejar la clave de encriptación: {e}")
             raise

@@ -43,3 +43,7 @@ logs/
 # Archivos de sistema
 .DS_Store
 Thumbs.db
+
+# Clave de encriptación y credenciales locales (nunca versionar)
+config/key.key
+config/credentials.enc
