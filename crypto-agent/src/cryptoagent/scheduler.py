@@ -43,6 +43,8 @@ def build_scheduler(agent: CryptoAgent, tz: str, backup_dir: str) -> AsyncIOSche
         next_run_time=dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=10),  # primer escaneo al arrancar
     )
     sched.add_job(_guard("fast_scan", lambda: agent.scan("fast")), IntervalTrigger(minutes=sc.fast_scan_minutes), id="fast_scan")
+    # Gestión de posiciones abiertas (stops/objetivos/kill switch). Sin posiciones no hace requests.
+    sched.add_job(_guard("trading_monitor", agent.trader.monitor), IntervalTrigger(minutes=1), id="trading_monitor")
     sched.add_job(_guard("evaluate", agent.evaluate), IntervalTrigger(minutes=sc.evaluate_minutes), id="evaluate")
     sched.add_job(_guard("daily_report", agent.daily_report), CronTrigger(hour=sc.daily_report_hour, minute=2), id="daily_report")
     sched.add_job(_guard("backup", backup), CronTrigger(hour=sc.backup_hour, minute=17), id="backup")

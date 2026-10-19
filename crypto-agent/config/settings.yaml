@@ -52,4 +52,35 @@ schedule:
   evaluate_minutes: 60     # verificación de resultados de señales pasadas
   backup_hour: 3
 
-concurrency: 6             # requests simultáneos al exchange (ccxt respeta el rate limit)
+trading:
+  # paused = no opera (por defecto) · paper = simulado con saldo virtual · live = órdenes reales en Binance spot
+  # El modo se cambia desde el dashboard; "live" además exige TRADING_LIVE_ENABLED=true, API keys
+  # y que el nivel de confianza (readiness) esté completo.
+  mode: paused
+  paper_starting_balance: 10000
+  live_capital_usd: 500         # tope de capital que el agente puede usar en real
+  risk_per_trade_pct: 1.0       # % del capital que se pierde si salta el stop
+  max_position_pct: 10          # tamaño máximo de una posición (% del capital)
+  max_open_positions: 5
+  min_score: 55                 # sólo señales ALCISTA FUERTE…
+  min_confidence: 0.6           # …con confianza alta…
+  min_risk_reward: 1.5          # …y R:R suficiente
+  max_hold_hours: 168           # cierre por tiempo (7 días)
+  daily_loss_limit_pct: 3       # kill switch: pausa automática si se pierde esto en el día
+  kill_switch_close_positions: true
+  fee_pct: 0.1
+  slippage_pct: 0.05
+  min_notional_usd: 10
+  allowed_symbols: []           # vacío = todo el universo; ej. [BTC/USDT, ETH/USDT]
+  require_readiness_for_live: true
+  readiness:
+    min_days: 21                # días de historial
+    min_evaluated: 300          # señales evaluadas en total
+    min_qualifying: 30          # señales que hubieran sido operaciones
+    min_hit_rate: 0.55          # acierto de esas señales
+    min_expectancy_r: 0.15      # ganancia media por operación, en múltiplos del riesgo
+    min_ic: 0.03                # IC del score total
+    min_paper_trades: 20        # operaciones simuladas cerradas
+    min_profit_factor: 1.2      # ganancias / pérdidas en simulado
+
+concurrency: 6            # requests simultáneos al exchange (ccxt respeta el rate limit)

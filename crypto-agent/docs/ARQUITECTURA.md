@@ -54,10 +54,17 @@ crypto-agent/
 │   │   ├── llm.py                # narrativa con Claude
 │   │   ├── report.py             # contexto + informe por plantilla
 │   │   └── serialize.py          # dict/JSON y texto de alertas
-│   ├── storage/db.py             # SQLAlchemy: signals, reports, component_stats
+│   ├── trading/
+│   │   ├── engine.py             # modos pausado/simulado/real, reglas de riesgo, kill switch
+│   │   ├── brokers.py            # PaperBroker (simulado) y LiveBroker (ccxt, Binance spot)
+│   │   └── readiness.py          # nivel de confianza que habilita el modo real
+│   ├── storage/db.py             # SQLAlchemy: signals, reports, component_stats, trades, kv
 │   ├── notify/telegram.py
-│   └── api/server.py             # FastAPI
-└── tests/                        # 26 tests con datos sintéticos (sin red)
+│   ├── agent/stats.py            # métricas de efectividad del dashboard
+│   └── api/
+│       ├── server.py             # FastAPI
+│       └── static/               # dashboard.html + Chart.js 4.4.1 (MIT, servido localmente)
+└── tests/                        # 37 tests con datos sintéticos (sin red)
 ```
 
 ## Base de datos
@@ -67,20 +74,28 @@ crypto-agent/
 | `signals` | Cada análisis (completo o rápido): score, etiqueta, confianza, componentes, plan, detalle JSON y, a posteriori, `ret_24h`, `ret_72h` y `outcome` (target/stop/abierta) |
 | `reports` | Informes diarios con su contexto JSON |
 | `component_stats` | IC, hit rate, n y multiplicador de peso de cada componente |
+| `trades` | Operaciones simuladas y reales: entrada, stop, objetivo, salida, motivo, PnL y R |
+| `kv` | Estado persistente: modo de trading elegido y motivo del último cambio (incluye el kill switch) |
 
 SQLite en modo WAL alcanza para este volumen (unas 2.500 filas por día). Para usar Postgres basta con
 cambiar `DATABASE_URL` (por ejemplo, un Postgres creado desde Coolify).
 
 ## API
 
-Todas las rutas, excepto `/health`, exigen `Authorization: Bearer $API_TOKEN`.
+Todas las rutas, excepto `/health` y la página `/dashboard`, exigen `Authorization: Bearer $API_TOKEN`.
+El dashboard es una página estática: pide el token en el navegador y consulta las rutas protegidas con él.
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/health` | Estado, último escaneo y próximos jobs |
 | GET | `/market` | Ranking del último escaneo, régimen y amplitud |
 | GET | `/symbol/{BASE}` | Análisis completo de un activo (ej. `/symbol/BTC`) |
-| GET | `/signals?symbol=&limit=&alerted=` | Historial de señales con resultados |
+| GET | `/dashboard` | Dashboard web de efectividad y trading |
+| GET | `/stats/effectiveness?days=90` | Acierto total, serie diaria, por confianza, por señal, IC por componente |
+| GET | `/signals?symbol=&limit=&alerted=&evaluated=` | Historial de señales con resultados |
+| GET | `/trading/status` | Modo, compuertas, nivel de confianza, cuentas, posiciones, curva de capital |
+| GET | `/trading/trades` | Operaciones |
+| POST | `/trading/mode` | Cambia el modo (`paused` / `paper` / `live`); 409 si faltan compuertas |
 | GET | `/performance?days=30` | Hit rate, target/stop e IC por componente |
 | GET | `/report/latest` | Último informe diario |
 | POST | `/scan` | Fuerza un escaneo completo (body opcional: lista de símbolos) |
@@ -103,5 +118,4 @@ El VPS está en **Brasil (Campinas)**: Binance y Bybit responden desde allí sin
 
 - **Más exchanges en LPF**: agregar Bybit/OKX con ccxt (`fetch_open_interest_history` es unificado) y sumar el OI.
 - **Bot conversacional en Telegram**: comandos `/btc` o `/top`, que consulten la API.
-- **Dashboard**: Grafana sobre SQLite/Postgres, o un frontend simple que consuma `/market`.
-- **Ejecución**: conectar las señales a freqtrade vía su API REST, con paper trading primero.
+- **Stops en el exchange**: además del monitor por minuto, colocar órdenes STOP_LOSS_LIMIT en Binance al entrar.

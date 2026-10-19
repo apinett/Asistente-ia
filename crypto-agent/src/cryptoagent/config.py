@@ -62,6 +62,40 @@ class ScheduleCfg(BaseModel):
     backup_hour: int = 3
 
 
+class ReadinessCfg(BaseModel):
+    """Umbrales del 'nivel de confianza' que habilita el modo real."""
+
+    min_days: int = 21
+    min_evaluated: int = 300
+    min_qualifying: int = 30
+    min_hit_rate: float = 0.55
+    min_expectancy_r: float = 0.15
+    min_ic: float = 0.03
+    min_paper_trades: int = 20
+    min_profit_factor: float = 1.2
+
+
+class TradingCfg(BaseModel):
+    mode: str = "paused"  # paused | paper | live
+    paper_starting_balance: float = 10_000
+    live_capital_usd: float = 500  # capital máximo que el agente puede usar en real
+    risk_per_trade_pct: float = 1.0
+    max_position_pct: float = 10.0
+    max_open_positions: int = 5
+    min_score: float = 55
+    min_confidence: float = 0.6
+    min_risk_reward: float = 1.5
+    max_hold_hours: float = 168
+    daily_loss_limit_pct: float = 3.0
+    kill_switch_close_positions: bool = True
+    fee_pct: float = 0.1
+    slippage_pct: float = 0.05
+    min_notional_usd: float = 10
+    allowed_symbols: list[str] = []
+    require_readiness_for_live: bool = True
+    readiness: ReadinessCfg = ReadinessCfg()
+
+
 class AgentConfig(BaseModel):
     exchange: ExchangeCfg = ExchangeCfg()
     universe: UniverseCfg = UniverseCfg()
@@ -72,6 +106,7 @@ class AgentConfig(BaseModel):
     scoring: ScoringCfg = ScoringCfg()
     alerts: AlertsCfg = AlertsCfg()
     schedule: ScheduleCfg = ScheduleCfg()
+    trading: TradingCfg = TradingCfg()
     concurrency: int = 6
 
 
@@ -85,6 +120,10 @@ class Secrets(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     api_token: str = ""
+    # Trading real: las tres deben estar presentes para que el modo "live" sea siquiera posible
+    binance_api_key: str = ""
+    binance_api_secret: str = ""
+    trading_live_enabled: bool = False
     database_url: str = "sqlite:///./storage/cryptoagent.db"
     config_path: str = Field(default=str(DEFAULT_CONFIG))
     log_level: str = "INFO"

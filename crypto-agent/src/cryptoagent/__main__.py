@@ -5,6 +5,7 @@
   python -m cryptoagent report                # genera y envía el informe diario ahora
   python -m cryptoagent evaluate              # evalúa señales pasadas y recalibra pesos
   python -m cryptoagent backtest -s BTC/USDT -t 4h -d 730
+  python -m cryptoagent doctor                # verifica conexiones y configuración (post-despliegue)
 """
 
 from __future__ import annotations
@@ -62,6 +63,92 @@ async def _backtest(symbol: str, timeframe: str, days: int, horizon: int) -> Non
     print(summarize(res).to_string(index=False))
 
 
+async def _doctor() -> bool:
+    """Chequeo de punta a punta de la instalación. Devuelve False si falla algo crítico."""
+    from .market.derivatives import fetch_derivatives
+    from .market.exchange import MarketData
+    from .market.macro import fetch_macro
+    from .notify.telegram import Telegram
+    from .storage.db import Database
+
+    cfg, sec = get_config(), get_secrets()
+    ok_all = True
+
+    def line(ok: bool | None, what: str, detail: str = "", critical: bool = False) -> None:
+        nonlocal ok_all
+        mark = {True: "✔", False: "✖", None: "–"}[ok]
+        print(f"  {mark} {what}" + (f": {detail}" if detail else ""))
+        if ok is False and critical:
+            ok_all = False
+
+    print("Crypto Agent · diagnóstico\n")
+    line(True, "Configuración", f"{sec.config_path} · universo top {cfg.universe.top_n} · trading '{cfg.trading.mode}'")
+    try:
+        db = Database(sec.database_url)
+        db.set_kv("doctor", "ok")
+        line(db.get_kv("doctor") == "ok", "Base de datos", sec.database_url, critical=True)
+    except Exception as exc:
+        line(False, "Base de datos", str(exc), critical=True)
+
+    async with MarketData(cfg) as md:
+        try:
+            df = await md.candles("BTC/USDT", "1h", 5)
+            line(len(df) > 0, f"Exchange spot ({cfg.exchange.spot})", f"BTC/USDT {df['close'].iloc[-1]:,.2f}", critical=True)
+        except Exception as exc:
+            line(False, f"Exchange spot ({cfg.exchange.spot})", str(exc)[:200], critical=True)
+        try:
+            dd = await fetch_derivatives(md, "BTC/USDT", cfg.positioning.period)
+            parts = {
+                "OI": dd is not None and dd.open_interest is not None,
+                "funding": dd is not None and dd.funding is not None,
+                "L/S": dd is not None and dd.top_ls_ratio is not None,
+                "CVD": dd is not None and dd.spot is not None and "taker_buy_volume" in dd.spot,
+            }
+            line(all(parts.values()), f"Derivados LPF ({cfg.exchange.derivatives})", " · ".join(f"{k} {'ok' if v else 'NO'}" for k, v in parts.items()))
+        except Exception as exc:
+            line(False, "Derivados LPF", str(exc)[:200])
+
+    macro = await fetch_macro()
+    line(bool(macro), "Datos macro", ", ".join(macro) or "sin respuesta")
+
+    tg = Telegram(sec.telegram_bot_token, sec.telegram_chat_id)
+    if tg.enabled:
+        line(await tg.send("✅ Crypto Agent: prueba de conexión desde el VPS."), "Telegram", "mensaje de prueba enviado")
+    else:
+        line(None, "Telegram", "no configurado (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)")
+
+    if sec.anthropic_api_key:
+        try:
+            import anthropic
+
+            m = await anthropic.AsyncAnthropic(api_key=sec.anthropic_api_key).models.retrieve(sec.claude_model)
+            line(True, "Claude", m.id)
+        except Exception as exc:
+            line(False, "Claude", str(exc)[:200])
+    else:
+        line(None, "Claude", "sin ANTHROPIC_API_KEY: el informe usa plantilla")
+
+    line(bool(sec.api_token), "API_TOKEN", "configurado" if sec.api_token else "falta: el dashboard no va a funcionar", critical=True)
+
+    if sec.binance_api_key and sec.binance_api_secret:
+        from .trading.brokers import LiveBroker
+
+        lb = LiveBroker(sec.binance_api_key, sec.binance_api_secret, cfg.exchange.spot)
+        try:
+            bal = await lb.ex.fetch_balance()
+            usdt = bal.get("USDT", {}).get("free")
+            line(True, "API key de Binance (trading)", f"USDT libre {usdt} · trading real {'HABILITADO' if sec.trading_live_enabled else 'deshabilitado'}")
+        except Exception as exc:
+            line(False, "API key de Binance (trading)", str(exc)[:200])
+        finally:
+            await lb.close()
+    else:
+        line(None, "API key de Binance (trading)", "no cargada: sólo modos pausado y simulado")
+
+    print("\nResultado:", "OK" if ok_all else "HAY ERRORES CRÍTICOS")
+    return ok_all
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="cryptoagent")
     sub = ap.add_subparsers(dest="cmd")
@@ -72,6 +159,7 @@ def main() -> None:
     p_scan.add_argument("-s", "--symbols", nargs="*")
     sub.add_parser("report")
     sub.add_parser("evaluate")
+    sub.add_parser("doctor")
     p_bt = sub.add_parser("backtest")
     p_bt.add_argument("-s", "--symbol", default="BTC/USDT")
     p_bt.add_argument("-t", "--timeframe", default="4h")
@@ -97,6 +185,8 @@ def main() -> None:
         asyncio.run(_report())
     elif cmd == "evaluate":
         asyncio.run(_evaluate())
+    elif cmd == "doctor":
+        raise SystemExit(0 if asyncio.run(_doctor()) else 1)
     elif cmd == "backtest":
         asyncio.run(_backtest(args.symbol, args.timeframe, args.days, args.horizon))
 

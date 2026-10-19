@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Crypto Agent · Dashboard</title>
+<!-- Chart.js 4.4.1 (MIT) servido localmente: el dashboard no depende de CDNs externos -->
+<script src="/static/chart-4.4.1.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --s1: #2a78d6; --s2: #eb6834; --neg: #e34948; --ref: #898781;
+    --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --critical: #d03b3b; --good-text: #006300;
+    --wash: rgba(11,11,11,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --s1: #3987e5; --s2: #d95926; --neg: #e66767; --good-text: #0ca30c; --wash: rgba(255,255,255,0.05);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --neg: #e66767; --good-text: #0ca30c; --wash: rgba(255,255,255,0.05);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .meta { color: var(--ink-2); font-size: 12px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 20px; }
+  h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
+  .sub { color: var(--ink-2); font-size: 12.5px; margin: 0 0 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .label { color: var(--ink-2); font-size: 12px; }
+  .kpi .value { font-size: 28px; font-weight: 650; margin-top: 2px; }
+  .kpi .note { color: var(--muted); font-size: 12px; }
+  .hero .value { font-size: 44px; }
+  .chart-box { position: relative; height: 260px; }
+  details { margin-top: 8px; color: var(--ink-2); font-size: 12.5px; }
+  summary { cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .pos { color: var(--good-text); } .neg { color: var(--critical); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .meter { height: 10px; background: var(--grid); border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+  .meter > div { height: 100%; background: var(--s1); border-radius: 999px; }
+  .checks { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+  .checks li { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; }
+  .checks .mini { height: 4px; background: var(--grid); border-radius: 4px; grid-column: 2 / 4; overflow: hidden; }
+  .checks .mini > div { height: 100%; background: var(--s1); }
+  .modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); padding: 8px 14px; }
+  button:hover { background: var(--wash); }
+  button.active { border-color: var(--s1); box-shadow: inset 0 0 0 1px var(--s1); font-weight: 650; }
+  button.danger { color: var(--critical); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .muted { color: var(--muted); }
+  .banner { border-radius: 10px; padding: 12px 16px; border: 1px solid var(--border); background: var(--surface); display: flex; gap: 10px; align-items: flex-start; }
+  #login { max-width: 420px; margin: 12vh auto; }
+  #login input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--ink); font: inherit; margin: 10px 0; }
+  .hidden { display: none !important; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  @media (max-width: 520px) { header { padding: 12px 16px; } .kpi .value { font-size: 24px; } .hero .value { font-size: 36px; } }
+</style>
+</head>
+<body>
+
+<section id="login" class="card hidden">
+  <h2>Crypto Agent</h2>
+  <p class="sub">Ingresá el <b>API_TOKEN</b> configurado en el servidor. Se guarda sólo en este navegador.</p>
+  <form id="login-form">
+    <input id="token" type="password" autocomplete="current-password" placeholder="API_TOKEN" required>
+    <button type="submit">Entrar</button>
+    <p id="login-error" class="neg"></p>
+  </form>
+</section>
+
+<div id="app" class="hidden">
+<header>
+  <div>
+    <h1>Crypto Agent · Dashboard</h1>
+    <div class="meta" id="meta">cargando…</div>
+  </div>
+  <div class="toolbar">
+    <label class="muted" for="days">Período</label>
+    <select id="days">
+      <option value="7">7 días</option><option value="30">30 días</option>
+      <option value="90" selected>90 días</option><option value="365">1 año</option>
+    </select>
+    <button id="theme" title="Cambiar tema">◐ Tema</button>
+    <button id="logout">Salir</button>
+  </div>
+</header>
+
+<main>
+  <!-- KPIs de efectividad -->
+  <section>
+    <h2>Efectividad del análisis</h2>
+    <p class="sub">Acierto = la dirección de la señal coincidió con el movimiento del precio 72 h después. Cuentan sólo señales con sesgo (|score| ≥ 25). El azar da 50%.</p>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section class="card">
+    <h2>Acierto en el tiempo</h2>
+    <p class="sub">Media móvil de 7 días. La línea gris marca el 50% (azar). El eje se ajusta al rango de los datos.</p>
+    <div class="legend"><span><i class="swatch" style="background:var(--s1)"></i>Todas las señales</span><span><i class="swatch" style="background:var(--s2)"></i>Señales fuertes (|score| ≥ 55)</span></div>
+    <div class="chart-box"><canvas id="c-time" aria-label="Acierto en el tiempo"></canvas></div>
+    <details><summary>Ver tabla</summary><div class="scroll" id="t-time"></div></details>
+  </section>
+
+  <div class="grid-2">
+    <section class="card">
+      <h2>Acierto según la confianza del agente</h2>
+      <p class="sub">Si el agente está bien calibrado, a más confianza, más acierto.</p>
+      <div class="chart-box"><canvas id="c-conf" aria-label="Acierto por confianza"></canvas></div>
+      <details><summary>Ver tabla</summary><div class="scroll" id="t-conf"></div></details>
+    </section>
+    <section class="card">
+      <h2>Acierto por tipo de señal</h2>
+      <p class="sub">Porcentaje de acierto a 72 h por etiqueta.</p>
+      <div class="chart-box"><canvas id="c-label" aria-label="Acierto por tipo de señal"></canvas></div>
+      <details><summary>Ver tabla</summary><div class="scroll" id="t-label"></div></details>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Qué componentes aportan</h2>
+    <p class="sub">IC = correlación entre el score del componente y el retorno a 72 h. Positivo aporta, negativo resta. El agente ajusta sus pesos con esto a partir de 50 señales.</p>
+    <div class="chart-box" style="height:300px"><canvas id="c-ic" aria-label="IC por componente"></canvas></div>
+    <details><summary>Ver tabla</summary><div class="scroll" id="t-ic"></div></details>
+  </section>
+
+  <!-- Trading -->
+  <section class="card" id="trading">
+    <h2>Compra y venta de activos</h2>
+    <p class="sub">El modo real queda bloqueado hasta que el nivel de confianza esté completo y el servidor tenga habilitado el trading real.</p>
+    <div id="mode-banner" class="banner"></div>
+    <div class="modes" id="modes">
+      <button data-mode="paused">⏸ Pausado</button>
+      <button data-mode="paper">🧪 Simulado (paper)</button>
+      <button data-mode="live">💰 Real (live)</button>
+    </div>
+    <label class="muted"><input type="checkbox" id="close-all"> Al pausar, cerrar todas las posiciones abiertas</label>
+    <p id="mode-msg" class="sub"></p>
+
+    <div class="grid-2" style="margin-top:12px">
+      <div>
+        <h2>Nivel de confianza para operar real</h2>
+        <div class="kpi hero" style="border:0;padding:0"><div class="value" id="ready-level">–</div></div>
+        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" id="ready-meter"><div></div></div>
+        <ul class="checks" id="ready-checks"></ul>
+      </div>
+      <div>
+        <h2>Capital simulado</h2>
+        <p class="sub" id="paper-sub">Evolución del capital del modo simulado (operaciones cerradas).</p>
+        <div class="chart-box" style="height:220px"><canvas id="c-equity" aria-label="Curva de capital"></canvas></div>
+        <div class="kpis" id="acct" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:18px">Posiciones abiertas</h2>
+    <div class="scroll" id="t-pos"></div>
+    <h2 style="margin-top:18px">Últimas operaciones</h2>
+    <div class="scroll" id="t-trades"></div>
+  </section>
+
+  <section class="card">
+    <h2>Últimas señales evaluadas</h2>
+    <div class="scroll" id="t-signals"></div>
+  </section>
+</main>
+</div>
+
+<script>
+"use strict";
+const TOKEN_KEY = "cryptoagent_token";
+const THEME_KEY = "cryptoagent_theme";
+const charts = {};
+let token = null;
+try { token = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+try { const t = localStorage.getItem(THEME_KEY); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pct = (x, d = 1) => (x === null || x === undefined) ? "–" : (x * 100).toFixed(d) + "%";
+const num = (x, d = 2) => (x === null || x === undefined) ? "–" : Number(x).toLocaleString("es-AR", { maximumFractionDigits: d, minimumFractionDigits: d });
+const price = (x) => (x === null || x === undefined) ? "–" : Number(x).toLocaleString("es-AR", { maximumSignificantDigits: 6 });
+const fmtDate = (s) => s ? new Date(s).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "–";
+
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v; else n.setAttribute(k, v);
+  }
+  for (const c of children) n.append(c instanceof Node ? c : document.createTextNode(c ?? ""));
+  return n;
+}
+
+function table(target, cols, rows, empty = "Sin datos todavía.") {
+  const box = $(target);
+  box.replaceChildren();
+  if (!rows.length) { box.append(el("p", { class: "muted" }, empty)); return; }
+  const thead = el("tr", {}, ...cols.map(c => el("th", { class: c.num ? "num" : "" }, c.label)));
+  const body = rows.map(r => el("tr", {}, ...cols.map(c => {
+    const v = c.get(r);
+    const cls = [c.num ? "num" : "", c.tone ? c.tone(r) : ""].join(" ").trim();
+    return el("td", { class: cls }, v);
+  })));
+  box.append(el("table", {}, el("thead", {}, thead), el("tbody", {}, ...body)));
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + token, "Content-Type": "application/json" } });
+  if (r.status === 401) { showLogin("Token inválido o vencido."); throw new Error("401"); }
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
+  return body;
+}
+
+function showLogin(msg = "") {
+  $("app").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  $("login-error").textContent = msg;
+}
+
+// ------------------------------------------------------------- Chart.js base
+function baseOptions(yPct = true, extra = {}) {
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: css("--surface"), titleColor: css("--ink"), bodyColor: css("--ink-2"),
+        borderColor: css("--axis"), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+      },
+    },
+    scales: {
+      x: { grid: { display: false }, border: { color: css("--axis") }, ticks: { color: css("--muted"), maxRotation: 0, autoSkipPadding: 16 } },
+      y: {
+        grid: { color: css("--grid") }, border: { display: false },
+        ticks: { color: css("--muted"), callback: v => yPct ? (v * 100).toFixed(0) + "%" : v },
+        ...(yPct ? { min: 0, max: 1 } : {}),
+      },
+    },
+    ...extra,
+  };
+}
+
+function draw(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), config);
+}
+
+// Línea de referencia (50% = azar), dibujada como plugin para no ser una "serie"
+const refLine = (value, label) => ({
+  id: "ref-" + label,
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { y } } = chart;
+    const py = y.getPixelForValue(value);
+    if (py < a.top || py > a.bottom) return;
+    ctx.save();
+    ctx.strokeStyle = css("--ref"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke();
+    ctx.fillStyle = css("--muted"); ctx.font = "11px system-ui, sans-serif"; ctx.textAlign = "right";
+    ctx.fillText(label, a.right - 4, py - 4);
+    ctx.restore();
+  },
+});
+
+// ------------------------------------------------------------- efectividad
+let lastStats = null, lastTrading = null, lastSignals = null;
+
+function renderStats(s) {
+  lastStats = s;
+  const m = s.summary || {};
+  const kpis = [
+    { label: "Acierto a 72 h", value: pct(m.hit_rate_72h), note: m.n ? `${m.n} señales evaluadas` : "esperando evaluaciones", hero: true },
+    { label: "Acierto señales fuertes", value: pct(m.hit_rate_strong), note: m.n_strong ? `${m.n_strong} señales` : "–" },
+    { label: "Acierto a 24 h", value: pct(m.hit_rate_24h), note: "horizonte corto" },
+    { label: "Objetivo vs stop", value: m.n ? `${m.targets ?? 0} / ${m.stops ?? 0}` : "–", note: "primer nivel tocado" },
+    { label: "Expectativa", value: m.expectancy_r == null ? "–" : (m.expectancy_r >= 0 ? "+" : "") + num(m.expectancy_r, 2) + " R", note: "ganancia media en múltiplos del riesgo" },
+    { label: "Pendientes de evaluar", value: String(s.signals_pending ?? 0), note: `de ${s.signals_total ?? 0} análisis guardados` },
+  ];
+  $("kpis").replaceChildren(...kpis.map(k => el("div", { class: "kpi" + (k.hero ? " hero" : "") },
+    el("div", { class: "label" }, k.label), el("div", { class: "value" }, k.value), el("div", { class: "note" }, k.note))));
+
+  const d = s.daily || [];
+  const vals = d.flatMap(x => [x.hit_rate_7d, x.hit_rate_strong_7d]).filter(v => v != null);
+  const lo = vals.length ? Math.max(0, Math.floor((Math.min(...vals, 0.5) - 0.05) * 10) / 10) : 0;
+  const hi = vals.length ? Math.min(1, Math.ceil((Math.max(...vals, 0.5) + 0.05) * 10) / 10) : 1;
+  const timeOpts = baseOptions(true, { plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${pct(c.raw)}` } } } });
+  timeOpts.scales.y.min = lo; timeOpts.scales.y.max = hi;
+  draw("c-time", {
+    type: "line",
+    data: {
+      labels: d.map(x => x.date.slice(5)),
+      datasets: [
+        { label: "Todas", data: d.map(x => x.hit_rate_7d), borderColor: css("--s1"), backgroundColor: css("--s1"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, spanGaps: true, tension: 0.25 },
+        { label: "Fuertes", data: d.map(x => x.hit_rate_strong_7d), borderColor: css("--s2"), backgroundColor: css("--s2"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, spanGaps: true, tension: 0.25 },
+      ],
+    },
+    options: timeOpts,
+    plugins: [refLine(0.5, "50% azar")],
+  });
+  table("t-time", [
+    { label: "Fecha", get: r => r.date }, { label: "Señales", num: 1, get: r => r.n },
+    { label: "Acierto del día", num: 1, get: r => pct(r.hit_rate) }, { label: "Media 7 d", num: 1, get: r => pct(r.hit_rate_7d) },
+    { label: "Fuertes 7 d", num: 1, get: r => pct(r.hit_rate_strong_7d) },
+  ], d.slice().reverse());
+
+  const bar = (id, labels, values, ns) => draw(id, {
+    type: "bar",
+    data: { labels, datasets: [{ label: "Acierto", data: values, backgroundColor: css("--s1"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 44, categoryPercentage: 0.7 }] },
+    options: baseOptions(true, { interaction: { mode: "nearest", intersect: false, axis: "x" }, plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => `Acierto ${pct(c.raw)} · ${ns[c.dataIndex]} señales` } } } }),
+    plugins: [refLine(0.5, "50%")],
+  });
+  const bc = s.by_confidence || [];
+  bar("c-conf", bc.map(x => x.bucket), bc.map(x => x.hit_rate), bc.map(x => x.n));
+  table("t-conf", [{ label: "Confianza", get: r => r.bucket }, { label: "Señales", num: 1, get: r => r.n }, { label: "Acierto", num: 1, get: r => pct(r.hit_rate) }], bc);
+  const bl = s.by_label || [];
+  bar("c-label", bl.map(x => x.label.toLowerCase()), bl.map(x => x.hit_rate), bl.map(x => x.n));
+  table("t-label", [{ label: "Señal", get: r => r.label }, { label: "Señales", num: 1, get: r => r.n }, { label: "Acierto", num: 1, get: r => pct(r.hit_rate) }, { label: "R medio", num: 1, get: r => num(r.avg_r, 2) }], bl);
+
+  const comps = (s.components || []).filter(c => c.name !== "score_total");
+  draw("c-ic", {
+    type: "bar",
+    data: { labels: comps.map(c => c.name.replace("_", " ")), datasets: [{ label: "IC", data: comps.map(c => c.ic), backgroundColor: comps.map(c => c.ic >= 0 ? css("--s1") : css("--neg")), borderRadius: 4, borderSkipped: false, maxBarThickness: 22 }] },
+    options: baseOptions(false, {
+      indexAxis: "y",
+      interaction: { mode: "nearest", intersect: false, axis: "y" },
+      plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => { const x = comps[c.dataIndex]; return `IC ${num(x.ic, 3)} · peso x${num(x.weight_mult, 2)} · n=${x.n}`; } } } },
+      scales: {
+        x: { grid: { color: css("--grid") }, border: { display: false }, ticks: { color: css("--muted") } },
+        y: { grid: { display: false }, border: { color: css("--axis") }, ticks: { color: css("--ink-2") } },
+      },
+    }),
+  });
+  table("t-ic", [{ label: "Componente", get: r => r.name }, { label: "IC", num: 1, get: r => num(r.ic, 4) }, { label: "Acierto", num: 1, get: r => pct(r.hit_rate) }, { label: "Peso", num: 1, get: r => "x" + num(r.weight_mult, 2) }, { label: "n", num: 1, get: r => r.n }], s.components || [], "Se calcula cuando haya señales evaluadas (72 h después de las primeras).");
+}
+
+// ------------------------------------------------------------------ trading
+const MODE_NAMES = { paused: "Pausado", paper: "Simulado (paper)", live: "Real (live)" };
+const STATUS = {
+  paused: { color: "--warn", icon: "⏸", text: "Pausado: no abre posiciones." },
+  paper: { color: "--good", icon: "🧪", text: "Simulado: opera con saldo virtual, sin tocar el exchange." },
+  live: { color: "--critical", icon: "💰", text: "REAL: está enviando órdenes a Binance con dinero real." },
+};
+
+function renderTrading(t) {
+  lastTrading = t;
+  const eff = t.effective_mode, st = STATUS[eff];
+  const reason = t.mode_reason && t.mode_reason.reason ? ` · último cambio: ${t.mode_reason.reason} (${fmtDate(t.mode_reason.ts)})` : "";
+  const warn = t.desired_mode !== eff ? ` Se pidió "${MODE_NAMES[t.desired_mode]}" pero faltan requisitos, por eso está pausado.` : "";
+  $("mode-banner").replaceChildren(
+    el("span", { class: "pill" }, el("i", { class: "dot", style: `background:var(${st.color})` }), `${st.icon} ${MODE_NAMES[eff]}`),
+    el("div", {}, st.text + warn, el("div", { class: "muted" }, reason.replace(/^ · /, "")))
+  );
+  document.querySelectorAll("#modes button").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === t.desired_mode);
+    if (b.dataset.mode === "live") {
+      const ok = t.live_gates.every(g => g.ok);
+      b.disabled = !ok;
+      b.title = ok ? "Habilitado" : "Bloqueado: " + t.live_gates.filter(g => !g.ok).map(g => g.label).join(" · ");
+    }
+  });
+
+  const rd = t.readiness;
+  $("ready-level").textContent = rd.level_pct.toFixed(0) + "%";
+  $("ready-meter").setAttribute("aria-valuenow", rd.level_pct);
+  $("ready-meter").firstElementChild.style.width = Math.min(rd.level_pct, 100) + "%";
+  const gateItems = t.live_gates.map(g => ({ label: g.label, ok: g.ok, display: g.ok ? "listo" : "pendiente", progress: g.ok ? 1 : 0, gate: true }));
+  $("ready-checks").replaceChildren(...[...rd.checks, ...gateItems].map(c => el("li", {},
+    el("span", { "aria-hidden": "true", style: `color:var(${c.ok ? "--good" : "--muted"})` }, c.ok ? "✔" : "○"),
+    el("span", {}, c.label, el("span", { class: "muted" }, c.gate ? " (servidor)" : ` · mínimo ${typeof c.threshold === "number" ? +c.threshold.toFixed(3) : c.threshold}`)),
+    el("span", { class: c.ok ? "pos" : "muted" }, c.display + (c.ok ? " ✓" : "")),
+    el("div", { class: "mini" }, el("div", { style: `width:${Math.round(c.progress * 100)}%` }))
+  )));
+
+  const showLive = t.accounts.live.closed_trades > 0 || t.accounts.live.open_positions > 0;
+  const accMode = showLive ? "live" : "paper";
+  const acc = t.accounts[accMode];
+  $("paper-sub").textContent = showLive ? "Capital asignado al modo real (operaciones cerradas)." : "Evolución del capital del modo simulado (operaciones cerradas).";
+  const tone = (x) => x > 0 ? "pos" : x < 0 ? "neg" : "";
+  const accK = [
+    { label: "Capital (USDT)", value: num(acc.equity, 0), note: `inicial ${num(acc.start_capital, 0)}` },
+    { label: "Rendimiento", value: (acc.return_pct > 0 ? "+" : "") + num(acc.return_pct, 2) + "%", cls: tone(acc.return_pct), note: `PnL realizado ${num(acc.realized_pnl, 2)}` },
+    { label: "Operaciones", value: String(acc.closed_trades), note: `ganadoras ${pct(acc.win_rate, 0)} · PF ${acc.profit_factor ?? "–"}` },
+  ];
+  $("acct").replaceChildren(...accK.map(k => el("div", { class: "kpi" }, el("div", { class: "label" }, k.label), el("div", { class: "value " + (k.cls || "") }, k.value), el("div", { class: "note" }, k.note))));
+  const curve = [{ ts: null, equity: acc.start_capital }, ...t.equity_curve[accMode]];
+  draw("c-equity", {
+    type: "line",
+    data: { labels: curve.map((p, i) => p.ts ? fmtDate(p.ts) : "inicio"), datasets: [{ label: "Capital", data: curve.map(p => p.equity), borderColor: css("--s1"), backgroundColor: css("--s1"), borderWidth: 2, pointRadius: curve.length < 30 ? 3 : 0, pointHoverRadius: 5, tension: 0.2 }] },
+    options: baseOptions(false, { plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => `Capital ${num(c.raw, 2)} USDT` } } } }),
+    plugins: [refLine(acc.start_capital, "capital inicial")],
+  });
+
+  table("t-pos", [
+    { label: "Modo", get: r => r.mode === "live" ? "💰 real" : "🧪 simulado" }, { label: "Activo", get: r => r.symbol },
+    { label: "Entrada", num: 1, get: r => price(r.entry_price) }, { label: "Actual", num: 1, get: r => price(r.price) },
+    { label: "Stop", num: 1, get: r => price(r.stop) }, { label: "Objetivo", num: 1, get: r => price(r.target) },
+    { label: "PnL USDT", num: 1, get: r => num(r.pnl_usd, 2), tone: r => tone(r.pnl_usd) }, { label: "Desde", get: r => fmtDate(r.entry_ts) },
+  ], t.open_positions, "No hay posiciones abiertas.");
+}
+
+function renderTrades(rows) {
+  const tone = (x) => x > 0 ? "pos" : x < 0 ? "neg" : "";
+  table("t-trades", [
+    { label: "Modo", get: r => r.mode === "live" ? "💰 real" : "🧪 simulado" }, { label: "Activo", get: r => r.symbol },
+    { label: "Entrada", get: r => fmtDate(r.entry_ts) }, { label: "Precio", num: 1, get: r => price(r.entry_price) },
+    { label: "Salida", get: r => r.exit_ts ? fmtDate(r.exit_ts) : "abierta" }, { label: "Motivo", get: r => (r.exit_reason || "–").replace("_", " ") },
+    { label: "PnL USDT", num: 1, get: r => num(r.pnl_usd, 2), tone: r => tone(r.pnl_usd) }, { label: "R", num: 1, get: r => num(r.r, 2), tone: r => tone(r.r) },
+  ], rows, "Todavía no hubo operaciones. Activá el modo simulado para empezar a medir.");
+}
+
+function renderSignals(rows) {
+  lastSignals = rows;
+  const outcome = { target: "✔ objetivo", stop: "✖ stop", abierta: "· abierta", sin_plan: "–" };
+  table("t-signals", [
+    { label: "Fecha", get: r => fmtDate(r.ts) }, { label: "Activo", get: r => r.symbol }, { label: "Señal", get: r => r.label },
+    { label: "Score", num: 1, get: r => (r.score > 0 ? "+" : "") + num(r.score, 0) }, { label: "Conf.", num: 1, get: r => num(r.confidence, 2) },
+    { label: "Ret. 24 h", num: 1, get: r => r.ret_24h == null ? "pendiente" : num(r.ret_24h, 2) + "%" },
+    { label: "Ret. 72 h", num: 1, get: r => r.ret_72h == null ? "pendiente" : num(r.ret_72h, 2) + "%" },
+    { label: "Acertó", get: r => r.ret_72h == null || Math.abs(r.score) < 25 ? "–" : (Math.sign(r.score) === Math.sign(r.ret_72h) ? "✔ sí" : "✖ no"), tone: r => r.ret_72h == null || Math.abs(r.score) < 25 ? "" : (Math.sign(r.score) === Math.sign(r.ret_72h) ? "pos" : "neg") },
+    { label: "Resultado plan", get: r => outcome[r.outcome] || "–" },
+  ], rows.filter(r => Math.abs(r.score) >= 25).slice(0, 40), "Todavía no hay señales evaluadas: la primera evaluación llega 72 h después del primer escaneo.");
+}
+
+// ------------------------------------------------------------------- ciclo
+async function load() {
+  const days = $("days").value;
+  try {
+    const [health, stats, trading, trades, signals] = await Promise.all([
+      fetch("/health").then(r => r.json()), api(`/stats/effectiveness?days=${days}`), api("/trading/status"),
+      api("/trading/trades?limit=50"), api("/signals?limit=200&evaluated=true"),
+    ]);
+    $("meta").textContent = `Último escaneo: ${health.last_full_scan ? fmtDate(health.last_full_scan) : "en curso"} · actualizado ${new Date().toLocaleTimeString("es-AR")}`;
+    renderStats(stats); renderTrading(trading); renderTrades(trades); renderSignals(signals);
+  } catch (e) {
+    if (e.message !== "401") $("meta").textContent = "Error al cargar: " + e.message;
+  }
+}
+
+async function setMode(mode) {
+  const names = MODE_NAMES[mode];
+  let msg = `¿Cambiar el modo de trading a "${names}"?`;
+  if (mode === "live") msg = "ATENCIÓN: el modo REAL envía órdenes con dinero real a Binance.\n\n¿Confirmás que querés activarlo?";
+  if (!confirm(msg)) return;
+  if (mode === "live" && prompt('Escribí "OPERAR REAL" para confirmar') !== "OPERAR REAL") return;
+  try {
+    const r = await api("/trading/mode", { method: "POST", body: JSON.stringify({ mode, close_all: mode === "paused" && $("close-all").checked }) });
+    $("mode-msg").textContent = r.message;
+  } catch (e) { $("mode-msg").textContent = e.message; }
+  load();
+}
+
+function start() {
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  load();
+}
+
+$("login-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  token = $("token").value.trim();
+  try { await api("/stats/effectiveness?days=1"); } catch (e) { return; }
+  try { localStorage.setItem(TOKEN_KEY, token); } catch (e) {}
+  start();
+});
+$("logout").addEventListener("click", () => { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} token = null; showLogin(); });
+$("days").addEventListener("change", load);
+document.querySelectorAll("#modes button").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+$("theme").addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  rerender();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+function rerender() { if (lastStats) renderStats(lastStats); if (lastTrading) renderTrading(lastTrading); }
+
+if (token) start(); else showLogin();
+setInterval(() => { if (token && !document.hidden) load(); }, 60000);
+</script>
+</body>
+</html>

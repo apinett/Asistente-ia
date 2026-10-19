@@ -9,7 +9,8 @@ Agente autónomo que corre 24/7 en tu VPS y analiza todo el mercado cripto:
 - **Estudio de mercado continuo**: universo dinámico (top 40 por volumen), fuerza relativa vs BTC, amplitud, régimen (HMM), macro (Fear & Greed, dominancia, stablecoins).
 - **🆕 LPF — Leverage & Positioning Flow**: análisis del posicionamiento en derivados (cuadrante precio/OI, funding z-score, CVD spot vs perpetuo, top traders vs retail, riesgo de squeeze, mapa estimado de liquidaciones) y **momentum ajustado por apalancamiento**. Ver [docs/ANALISIS_LPF.md](docs/ANALISIS_LPF.md).
 - **Auto-evaluación**: mide el acierto de sus propias señales a 72h y **recalibra los pesos** de cada componente según el IC observado.
-- **Salidas**: alertas e informe diario por **Telegram** (con narrativa de Claude), API HTTP y base de datos con el historial.
+- **Salidas**: alertas e informe diario por **Telegram** (con narrativa de Claude), **dashboard web de efectividad**, API HTTP y base de datos con el historial.
+- **Compra/venta en pausa**: modos pausado → simulado → real, con el modo real bloqueado hasta demostrar ventaja con datos.
 
 > ⚠️ Es una herramienta de análisis, no de asesoramiento financiero. Validá el desempeño con `/performance` antes de operar con sus señales.
 
@@ -17,6 +18,8 @@ Agente autónomo que corre 24/7 en tu VPS y analiza todo el mercado cripto:
 
 | Documento | Contenido |
 |---|---|
+| [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md) | **Paso a paso para subirlo a tu VPS** con Coolify, verificación y problemas frecuentes |
+| [docs/TRADING.md](docs/TRADING.md) | Módulo de compra/venta: modos, reglas de riesgo, nivel de confianza y cómo activar el modo real |
 | [docs/REPOSITORIOS.md](docs/REPOSITORIOS.md) | Investigación de repos de GitHub: qué se usa completo, qué parcial y qué se descartó |
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Módulos, flujo de datos, base de datos, API y presupuesto de recursos del VPS |
 | [docs/METODOLOGIA.md](docs/METODOLOGIA.md) | Fórmulas y reglas de cada componente, scoring, plan operativo y auto-evaluación |
@@ -43,52 +46,52 @@ Claves:
 cd crypto-agent
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest                                                   # 26 tests, sin red
+pytest                                                   # 37 tests, sin red
 PYTHONPATH=src python -m cryptoagent scan -s BTC/USDT ETH/USDT SOL/USDT
 PYTHONPATH=src python -m cryptoagent backtest -s BTC/USDT -t 4h -d 730
+API_TOKEN=dev PYTHONPATH=src python -m cryptoagent serve --port 8080   # dashboard en http://localhost:8080
 ```
 
-## Despliegue en el VPS Hostinger (KVM 2 · Ubuntu 24.04 con Coolify)
+## Despliegue en el VPS
 
-### Antes de empezar
-1. **Bot de Telegram**: hablale a [@BotFather](https://t.me/BotFather), `/newbot` → copiá el token. Mandale un mensaje a tu bot
-   y obtené tu chat id con [@userinfobot](https://t.me/userinfobot).
-2. **API key de Claude** (opcional, para la narrativa del informe): [console.anthropic.com](https://console.anthropic.com).
-   Sin ella el agente funciona igual y usa un informe por plantilla.
-3. **Token de la API**: `openssl rand -hex 32`.
+👉 **Guía paso a paso: [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md)** (Coolify en Hostinger, 30–45 min).
 
-### Opción A: Coolify (recomendada)
-1. Entrá al panel de Coolify (`http://187.127.49.189:8000`, o el dominio que hayas configurado).
-2. **Projects → + New → Add Resource → Private Repository (GitHub App)** y elegí `apinett/asistente-ia`, con la rama
-   en la que esté este código.
-3. **Build Pack: Docker Compose** · **Base Directory: `/crypto-agent`** · **Docker Compose Location: `/docker-compose.yml`**.
-4. En **Environment Variables** cargá: `API_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ANTHROPIC_API_KEY`
-   (opcional) y `TZ=America/Argentina/Buenos_Aires`.
-5. (Opcional) En **Domains** del servicio `crypto-agent`: `https://agente.tudominio.com:8000`. Coolify emite el
-   certificado TLS y enruta al puerto interno 8000.
-6. **Deploy**. En los logs deberías ver `universo: 40 activos` y `escaneo full: 40 activos en XXs`.
-   El volumen `agent-storage` conserva la base y los backups entre despliegues.
+Resumen: en Coolify, **+ New → Public Repository** → `https://github.com/apinett/Asistente-ia` · Build Pack
+**Docker Compose** · Base Directory **`/crypto-agent`** → cargá `API_TOKEN` y Telegram → **Deploy** → verificá con
+`python -m cryptoagent doctor` desde la terminal del contenedor.
 
-### Opción B: Docker Compose directo por SSH
-```bash
-ssh root@187.127.49.189
-git clone https://github.com/apinett/asistente-ia.git && cd asistente-ia/crypto-agent
-cp .env.example .env && nano .env          # completar tokens
-docker compose up -d --build
-docker compose logs -f
-```
-Para exponer la API sin Coolify, descomentá `ports` en `docker-compose.yml` (puerto 8080 del host, porque
-el 8000 lo ocupa Coolify) y poné un proxy con HTTPS delante.
+## Dashboard de efectividad
+
+`https://tu-dominio/dashboard` (pide el `API_TOKEN`; se guarda sólo en tu navegador).
+
+![Dashboard (datos de ejemplo)](docs/img/dashboard.png)
+
+*Captura con datos de ejemplo.* Muestra:
+- **% de acierto** de las señales a 72 h (y a 24 h), total y de señales fuertes, contra la línea del 50% (azar).
+- **Evolución del acierto** (media móvil de 7 días).
+- **Calibración**: acierto según la confianza que el agente le dio a cada análisis.
+- Acierto por tipo de señal, objetivo vs stop y **expectativa en R**.
+- **Qué componentes aportan** (IC de tendencia, momentum, LPF, etc.) y cómo se ajustaron sus pesos.
+- Panel de **trading**: modo, nivel de confianza, capital simulado/real, posiciones y operaciones.
+
+Chart.js se sirve desde el propio agente: no depende de CDNs externos.
+
+## Compra y venta (en pausa)
+
+El módulo de trading **arranca pausado**. Desde el dashboard podés pasar a **simulado** (saldo virtual) para
+medir la operatoria. El modo **real** se habilita sólo cuando el *nivel de confianza* llega al 100% y además
+cargaste API keys de Binance (sin permiso de retiro) con `TRADING_LIVE_ENABLED=true`.
+Detalle completo: [docs/TRADING.md](docs/TRADING.md).
 
 ### Uso de la API
 ```bash
 TOKEN=...; URL=https://agente.tudominio.com
-curl -H "Authorization: Bearer $TOKEN" $URL/market            # ranking del mercado
-curl -H "Authorization: Bearer $TOKEN" $URL/symbol/BTC        # análisis completo de BTC
-curl -H "Authorization: Bearer $TOKEN" $URL/performance       # desempeño medido de las señales
-curl -X POST -H "Authorization: Bearer $TOKEN" $URL/report    # informe diario ahora
+curl -H "Authorization: Bearer $TOKEN" $URL/market                 # ranking del mercado
+curl -H "Authorization: Bearer $TOKEN" $URL/symbol/BTC             # análisis completo de BTC
+curl -H "Authorization: Bearer $TOKEN" $URL/stats/effectiveness    # efectividad (lo que muestra el dashboard)
+curl -H "Authorization: Bearer $TOKEN" $URL/trading/status         # modo, nivel de confianza, cuentas
+curl -X POST -H "Authorization: Bearer $TOKEN" $URL/report         # informe diario ahora
 ```
-Comandos manuales dentro del contenedor: `docker compose exec crypto-agent python -m cryptoagent scan -s BTC/USDT`.
 
 ## Configuración
 

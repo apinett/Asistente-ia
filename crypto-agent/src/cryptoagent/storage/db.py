@@ -60,6 +60,42 @@ class ComponentStat(Base):
     updated: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Trade(Base):
+    """Operación del módulo de trading (simulada o real). Sólo largos en spot."""
+
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(8), index=True)  # paper | live
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(8), default="open", index=True)  # open | closed
+    entry_ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    entry_price: Mapped[float] = mapped_column(Float)
+    qty: Mapped[float] = mapped_column(Float)
+    stop: Mapped[float] = mapped_column(Float)
+    target: Mapped[float] = mapped_column(Float)
+    risk_usd: Mapped[float] = mapped_column(Float)
+    fees_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    signal_score: Mapped[float] = mapped_column(Float)
+    signal_confidence: Mapped[float] = mapped_column(Float)
+    exit_ts: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    pnl_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    r_multiple: Mapped[float | None] = mapped_column(Float, nullable=True)
+    order_ids: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class KV(Base):
+    """Estado de ejecución persistente (modo de trading elegido en el dashboard, motivo de pausa…)."""
+
+    __tablename__ = "kv"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+    updated: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Database:
     def __init__(self, url: str):
         if url.startswith("sqlite:///"):
@@ -90,6 +126,18 @@ class Database:
         with self.session() as s:
             q = select(Signal).where(Signal.symbol == symbol, Signal.alerted.is_(True)).order_by(Signal.ts.desc())
             return s.scalars(q.limit(1)).first()
+
+    def get_kv(self, key: str, default=None):
+        with self.session() as s:
+            row = s.get(KV, key)
+            return row.value.get("v") if row else default
+
+    def set_kv(self, key: str, value) -> None:
+        with self.session() as s:
+            row = s.get(KV, key) or KV(key=key, value={})
+            row.value, row.updated = {"v": value}, utcnow()
+            s.add(row)
+            s.commit()
 
     def adaptive_weights(self) -> dict[str, float]:
         with self.session() as s:

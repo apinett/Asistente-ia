@@ -22,6 +22,8 @@ from ..market.exchange import MarketData
 from ..market.macro import fetch_macro
 from ..notify.telegram import Telegram
 from ..storage.db import Database, Report, Signal, utcnow
+from ..trading.brokers import CcxtPriceSource
+from ..trading.engine import TradingEngine
 from .evaluation import evaluate_signals, performance_summary
 from .llm import write_narrative
 from .report import build_context, template_report
@@ -34,7 +36,9 @@ FAST_TOP = 15
 
 
 class CryptoAgent:
-    def __init__(self, cfg: AgentConfig, secrets: Secrets, db: Database | None = None, md_factory=MarketData):
+    def __init__(
+        self, cfg: AgentConfig, secrets: Secrets, db: Database | None = None, md_factory=MarketData, prices=None
+    ):
         self.cfg = cfg
         self.secrets = secrets
         self.db = db or Database(secrets.database_url)
@@ -48,6 +52,9 @@ class CryptoAgent:
         self.breadth: dict = {}
         self.market_regime: dict | None = None
         self._lock = asyncio.Lock()
+        self.trader = TradingEngine(
+            cfg, secrets, self.db, prices or CcxtPriceSource(cfg.exchange.spot), notify=self.telegram.send
+        )
 
     # ------------------------------------------------------------------ análisis
     async def universe(self, md: MarketData) -> list[str]:
@@ -146,6 +153,11 @@ class CryptoAgent:
                 self.latest_ts = utcnow()
                 self.breadth = market_breadth({a.symbol: self._daily[a.symbol] for a in analyses if a.symbol in self._daily})
             await self._persist_and_alert(analyses, kind)
+            if kind == "full":
+                try:
+                    await self.trader.on_scan(analyses)
+                except Exception:  # el trading nunca debe tumbar el análisis
+                    log.exception("módulo de trading falló")
             log.info("escaneo %s: %d activos en %.1fs", kind, len(analyses), time.time() - t0)
             return analyses
 

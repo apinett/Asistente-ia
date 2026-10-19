@@ -101,6 +101,7 @@ Para las señales alcistas (las bajistas son simétricas):
 | Escaneo rápido | 15 min | Top 15 en 1h/15m. Alerta de *timing* sólo si coincide con el sesgo del escaneo completo |
 | Evaluación | 60 min | Retorno a 24h/72h de cada señal, si tocó objetivo o stop, IC por componente y pesos adaptativos |
 | Informe diario | 09:02 (TZ) | Macro (Fear & Greed, dominancia, stablecoins), amplitud, régimen, top alcistas/bajistas, LPF de BTC/ETH y desempeño. Narrativa con Claude |
+| Monitor de trading | 1 min | Stops, objetivos, cierre por tiempo y kill switch de las posiciones simuladas o reales (ver [TRADING.md](TRADING.md)) |
 | Backup y retención | 03:17 | `VACUUM INTO` (7 copias). Purga del detalle de más de 30 días |
 
 ## 7. Backtest

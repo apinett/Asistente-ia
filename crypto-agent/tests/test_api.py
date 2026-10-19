@@ -34,5 +34,18 @@ def test_api_auth_and_health(tmp_path, monkeypatch):
         assert r.status_code == 200 and r.json()["signals"] == []
         assert c.get("/symbol/BTC", headers={"Authorization": "Bearer secreto"}).status_code == 404
         assert c.get("/signals", headers={"Authorization": "Bearer secreto"}).json() == []
+        # dashboard público (la página pide el token), datos protegidos
+        page = c.get("/dashboard")
+        assert page.status_code == 200 and "Crypto Agent" in page.text
+        assert c.get("/stats/effectiveness").status_code == 401
+        h = {"Authorization": "Bearer secreto"}
+        assert c.get("/stats/effectiveness", headers=h).json()["summary"] == {"n": 0}
+        st = c.get("/trading/status", headers=h).json()
+        assert st["effective_mode"] == "paused" and st["readiness"]["level_pct"] == 0
+        assert c.post("/trading/mode", json={"mode": "live"}, headers=h).status_code == 409
+        assert c.post("/trading/mode", json={"mode": "paper"}, headers=h).json()["ok"]
+        assert c.get("/trading/status", headers=h).json()["effective_mode"] == "paper"
+        assert c.post("/trading/mode", json={"mode": "paused", "close_all": True}, headers=h).json()["ok"]
+        assert c.get("/trading/trades", headers=h).json() == []
     get_secrets.cache_clear()
     get_config.cache_clear()
